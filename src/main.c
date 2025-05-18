@@ -39,13 +39,12 @@
 #include "ps1/gpucmd.h"
 #include "ps1/registers.h"
 #include "ps1/cdrom.h"
-//#include "includes/rama.c"
-#include "includes/cdrom.h"
-#include "includes/filesystem.h"
-#include "includes/irq.h"
+#include "psxproject/cdrom.h"
+#include "psxproject/filesystem.h"
+#include "psxproject/irq.h"
 #include "gpu.h"
 #include "controller.h"
-#include "includes/system.h"
+#include "psxproject/system.h"
 
 
 

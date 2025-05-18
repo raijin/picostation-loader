@@ -1,0 +1,15 @@
+{
+	"folders": [
+		{
+			"path": "."
+		}
+	],
+	"settings": {
+		"files.associations": {
+			"atomic": "c",
+			"cdrom.h": "c",
+			"gpu.h": "c",
+			"controller.h": "c"
+		}
+	}
+}

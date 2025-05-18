@@ -85,7 +85,7 @@
             -->
             <!-- Stores system.txt as system.cnf -->
             <file name="system.cnf" type="data" source="system.cnf"/>
-            <file name="SCES_313.37"   type="data" source="build/picostation-loader.psexe"/>
+            <file name="SCES_313.37"   type="data" source="../../build/picostation-loader.psexe"/>
             <file name="PICO.DAT"   type="data" source="PICO.DAT"/>
             <dummy sectors="16"/>
             
