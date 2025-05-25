@@ -156,7 +156,7 @@ void startCDROMRead(uint32_t lba, void *ptr, size_t numSectors, size_t sectorSiz
     issueCDROMCommand(CDROM_CMD_SETLOC , (const uint8_t *)&msf, sizeof(msf));
     waitForINT3();
     printf("Issue CDREAD\n");
-    issueCDROMCommand(CDROM_CMD_READ_S  , NULL, 0);
+    issueCDROMCommand(CDROM_CMD_READ_N  , NULL, 0);
     waitForINT3();
     if(wait){
         while(cdromReadDataNumSectors > 0){

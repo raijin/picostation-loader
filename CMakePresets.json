@@ -13,7 +13,8 @@
       "generator":   "Unix Makefiles",
       "binaryDir":   "${sourceDir}/build",
       "cacheVariables": {
-        "CMAKE_BUILD_TYPE": "Debug"
+        "CMAKE_BUILD_TYPE": "Debug",
+        "CMAKE_VERBOSE_MAKEFILE": "OFF"
       }
     },
     {
@@ -23,7 +24,8 @@
       "generator":   "Unix Makefiles",
       "binaryDir":   "${sourceDir}/build",
       "cacheVariables": {
-        "CMAKE_BUILD_TYPE": "Release"
+        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_VERBOSE_MAKEFILE": "OFF"
       }
     },
     {
@@ -33,7 +35,8 @@
       "generator":   "Unix Makefiles",
       "binaryDir":   "${sourceDir}/build",
       "cacheVariables": {
-        "CMAKE_BUILD_TYPE": "MinSizeRel"
+        "CMAKE_BUILD_TYPE": "MinSizeRel",
+        "CMAKE_VERBOSE_MAKEFILE": "OFF"
       }
     }
   ],

@@ -6,10 +6,12 @@ cmake_minimum_required(VERSION 3.25)
 # setup.cmake.
 set(CMAKE_TOOLCHAIN_FILE "${CMAKE_CURRENT_LIST_DIR}/ps1-bare-metal/cmake/toolchain.cmake")
 
+set(PROJECT_NAME "picostation-loader")
+
 # Tell CMake about the project. The VERSION, DESCRIPTION and HOMEPAGE_URL fields
 # are optional, but the project name and LANGUAGES field should be present.
 project(
-    picostation-loader
+    ${PROJECT_NAME}
     LANGUAGES    C CXX ASM
     VERSION      1.0.0
     DESCRIPTION  "PSX.Dev project template"
@@ -35,8 +37,8 @@ add_library(
     ps1-bare-metal/libc/string.s
     ps1-bare-metal/ps1/cache.s
     ps1-bare-metal/vendor/printf.c
-    src/includes/system.s
-    src/includes/unhandledexc.c
+    src/psxproject/system.s
+    src/psxproject/unhandledexc.c
 )
 target_include_directories(
     common PUBLIC
@@ -47,17 +49,17 @@ target_include_directories(
 # Compile the main executable. You may add more source files by listing them
 # here.
 add_executable(
-    picostation-loader
+    ${PROJECT_NAME}
     src/gpu.c
     src/main.c
     src/controller.c
-    src/includes/cdrom.c
-    src/includes/system.c
-    src/includes/filesystem.c
-    src/includes/irq.c
-    src/includes/stream.c
+    src/psxproject/cdrom.c
+    src/psxproject/system.c
+    src/psxproject/filesystem.c
+    src/psxproject/irq.c
+    src/psxproject/stream.c
 )
-target_link_libraries(picostation-loader PRIVATE common)
+target_link_libraries(${PROJECT_NAME} PRIVATE common)
 
 # Define a CMake macro that invokes convertImage.py in order to generate VRAM
 # texture data from an image file.
@@ -75,40 +77,34 @@ function(convertImage input bpp)
     )
 endfunction()
 
-
 # Convert the font spritesheet to a 4bpp texture and palette, then embed them
 # into the executable. The addBinaryFile() macro is defined in setup.cmake; you
 # may call it multiple times to embed other data into the binary.
-convertImage(assets/font.png 4 fontTexture.dat fontPalette.dat)
-#convertImage(assets/pilogo.png 4 piLogo.dat piPalette.dat)
+convertImage(assets/images/font.png 4 fontTexture.dat fontPalette.dat)
+convertImage(assets/images/pilogo.png 4 piLogo.dat piPalette.dat)
 addBinaryFile(picostation-loader fontTexture "${PROJECT_BINARY_DIR}/fontTexture.dat")
 addBinaryFile(picostation-loader fontPalette "${PROJECT_BINARY_DIR}/fontPalette.dat")
 addBinaryFile(picostation-loader piTexture "${PROJECT_BINARY_DIR}/piLogo.dat")
 addBinaryFile(picostation-loader piPalette "${PROJECT_BINARY_DIR}/piPalette.dat")
-
-
-
 
 # Add a step to run convertExecutable.py after the executable is compiled in
 # order to convert it into a PS1 executable. By default all custom commands run
 # from the build directory, so paths to files in the source directory must be
 # prefixed with ${PROJECT_SOURCE_DIR}.
 add_custom_command(
-    TARGET     picostation-loader POST_BUILD
-    BYPRODUCTS picostation-loader.psexe
+    TARGET ${PROJECT_NAME} POST_BUILD
+    BYPRODUCTS ${PROJECT_NAME}.psexe
     COMMAND
         "${Python3_EXECUTABLE}"
         "${PROJECT_SOURCE_DIR}/ps1-bare-metal/tools/convertExecutable.py"
         "$<TARGET_FILE:picostation-loader>"
-        picostation-loader.psexe
+        ${PROJECT_NAME}.psexe
     VERBATIM
 )
 
 add_custom_command(
-    TARGET     picostation-loader POST_BUILD
-    COMMAND
-        "${PROJECT_SOURCE_DIR}/makeimage.bat"
-        "$<TARGET_FILE:picostation-loader>"
-        picostation-loader.psexe
+    TARGET ${PROJECT_NAME} POST_BUILD
+    COMMAND "${PROJECT_SOURCE_DIR}/make-xiso.bat"
+    WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}"
     VERBATIM
 )
