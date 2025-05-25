@@ -63,7 +63,7 @@
                 file    - Specifies the license file to inject into the ISO image.
         -->
         <!--
-        <license file="LICENSEA.DAT"/>
+        <license file="build/LICENSEE.DAT"/>
         -->
         
         <!-- <directory_tree>
