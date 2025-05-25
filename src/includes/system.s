@@ -168,7 +168,43 @@ _exceptionHandler:
 	jr    $k1
 	rfe
 
-## Delay functions
+## Fast reboot stubs
+
+.set COP0_DCIC, $7
+
+.section .text._fastRebootBreakVector, "ax", @progbits
+.global _fastRebootBreakVector
+.type _fastRebootBreakVector, @function
+
+_fastRebootBreakVector:
+	# When performing a fast reboot (i.e. forcing the BIOS to skip running the
+	# shell and move immediately onto booting the CD-ROM), this 16-byte stub is
+	# going to be placed at the address the CPU jumps to when a COP0 breakpoint
+	# is hit (0x80000040). The breakpoint will be configured to trip when the
+	# BIOS relocates the first byte of the shell to RAM; once that stage is
+	# reached the code below will proceed to remove the breakpoint, undo the
+	# write, then hijack the control flow and force the copying function to
+	# return before anything else is copied.
+	mtc0  $0, COP0_DCIC
+	sw    $0, -1($a0)
+	jr    $ra
+	rfe
+
+.section .text._fastRebootDummyShell, "ax", @progbits
+.global _fastRebootDummyShell
+.type _fastRebootDummyShell, @function
+
+_fastRebootDummyShell:
+	# Since the COP0 breakpoint will not prevent the BIOS from attempting to run
+	# the shell it "loaded", this dummy function will be copied in its place.
+	# This is the simplest possible implementation of a shell: once it returns,
+	# the kernel will proceed to launch the boot executable on the CD-ROM. Note
+	# that the first instruction here will be overwritten with a nop by
+	# _fastRebootBreakVector().
+	nop
+	jr    $ra
+	nop
+	nop
 
 .set IO_BASE, 0xbf801000
 

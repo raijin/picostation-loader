@@ -9,7 +9,8 @@
 
 #include <stdio.h>
 #include <stdbool.h>
-
+#include <stdatomic.h>
+#include "system.h"
 
 volatile bool waitingForInt1;
 volatile bool waitingForInt2;
@@ -132,7 +133,7 @@ void waitForINT5(){
 /// @param sectorSize Size of sector (2048)
 /// @param doubleSpeed Read at double speed
 /// @param wait Block until read completed
-void startCDROMRead(uint32_t lba, void *ptr, size_t numSectors, size_t sectorSize, bool doubleSpeed, bool wait) {
+/*void startCDROMRead(uint32_t lba, void *ptr, size_t numSectors, size_t sectorSize, bool doubleSpeed, bool wait) {
     cdromReadDataPtr        = ptr;
     cdromReadDataNumSectors = numSectors;
     cdromReadDataSectorSize = sectorSize;
@@ -164,6 +165,44 @@ void startCDROMRead(uint32_t lba, void *ptr, size_t numSectors, size_t sectorSiz
             __asm__ volatile("");
         }
         waitForINT2();
+    }
+    printf("Finish read\n");
+}*/
+
+void startCDROMRead(uint32_t lba, void *ptr, size_t numSectors, size_t sectorSize, bool doubleSpeed, bool wait)
+{
+    cdromReadDataPtr = ptr;
+    cdromReadDataNumSectors = numSectors;
+    cdromReadDataSectorSize = sectorSize;
+
+    uint8_t mode = 0;
+    CDROMMSF     msf;
+
+    if (sectorSize == 2340)
+        mode |= CDROM_MODE_SIZE_2340 ;
+    if (doubleSpeed)
+        mode |= CDROM_MODE_SPEED_2X;
+
+    cdrom_convertLBAToMSF(&msf, lba);
+    printf("LBA Set: %d (%02x:%02x:%02x), issue setmode\n", lba, msf.minute, msf.second, msf.frame);
+    issueCDROMCommand(CDROM_CMD_SETMODE, &mode, sizeof(mode));
+    waitForINT3();
+    printf("Issue SETLOC\n");
+    issueCDROMCommand(CDROM_CMD_SETLOC, (const uint8_t *)&msf, sizeof(msf));
+    waitForINT3();
+    printf("Issue CDREAD\n");
+    issueCDROMCommand(CDROM_CMD_READ_N, NULL, 0);
+    waitForINT3();
+
+    if ( !waitingForInt1 ) printf(" what's going on!?\n");
+
+    if (wait)
+    {
+        while (waitingForInt1)
+        {
+            // busy wait
+            delayMicroseconds(200);
+        }
     }
     printf("Finish read\n");
 }

@@ -13,7 +13,7 @@
         cue_sheet   - Optional, file name of the cue sheet for the image file
                       (required if more than one track is specified).
 -->
-<iso_project image_name="picostation-loader.bin" cue_sheet="picostation-loader.cue">
+<iso_project image_name="picoloader.bin" cue_sheet="picoloader.cue">
 
     <!-- <track>
             Specifies a track to the ISO project. This example element creates a data
@@ -86,7 +86,6 @@
             <!-- Stores system.txt as system.cnf -->
             <file name="system.cnf" type="data" source="system.cnf"/>
             <file name="SCES_313.37"   type="data" source="build/picostation-loader.psexe"/>
-            <file name="PICO.DAT"   type="data" source="PICO.DAT"/>
             <dummy sectors="16"/>
             
             <!-- <dir>

@@ -141,6 +141,7 @@ void flushCache(void);
  * @brief Jumps to the entry point in the BIOS. This function does not return.
  */
 void softReset(void);
+void softFastReboot(void);
 
 /**
  * @brief Blocks for (roughly) the specified number of microseconds. This

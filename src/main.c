@@ -36,6 +36,8 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 #include "ps1/gpucmd.h"
 #include "ps1/registers.h"
 #include "ps1/cdrom.h"
@@ -46,9 +48,7 @@
 #include "gpu.h"
 #include "controller.h"
 #include "includes/system.h"
-
-
-
+#include <ctype.h>
 
 
 // In order to pick sprites (characters) out of our spritesheet, we need a table
@@ -155,7 +155,28 @@ static const SpriteInfo fontSprites[] = {
 	{ .x = 72, .y = 45, .width = 2, .height = 9 }, // |
 	{ .x = 78, .y = 45, .width = 4, .height = 9 }, // }
 	{ .x = 84, .y = 45, .width = 6, .height = 9 }, // ~
-	{ .x = 90, .y = 45, .width = 6, .height = 9 }  // Invalid character
+	{ .x = 90, .y = 45, .width = 6, .height = 9 },  // Invalid character
+	{ .x =  0, .y = 54, .width =  6, .height = 9 }, // 
+    { .x =  6, .y = 54, .width =  6, .height = 9 }, // 
+    { .x = 12, .y = 54, .width =  4, .height = 9 }, // 
+    { .x = 18, .y = 54, .width =  4, .height = 9 }, // 
+    { .x = 24, .y = 54, .width =  6, .height = 9 }, // 
+    { .x = 30, .y = 54, .width =  6, .height = 9 }, // 
+    { .x = 36, .y = 54, .width =  6, .height = 9 }, // 
+    { .x = 42, .y = 54, .width =  6, .height = 9 }, // 
+    { .x =  0, .y = 63, .width =  7, .height =  9 }, // 
+    { .x = 12, .y = 63, .width =  7, .height =  9 }, // 
+    { .x = 24, .y = 63, .width =  9, .height =  9 }, // 
+    { .x = 36, .y = 63, .width =  8, .height = 10 }, // 
+    { .x = 48, .y = 63, .width = 11, .height = 10 }, // 
+    { .x = 60, .y = 63, .width = 12, .height = 10 }, // 
+    { .x = 72, .y = 63, .width = 14, .height =  9 }, // 
+    { .x =  0, .y = 73, .width = 10, .height = 10 }, //
+    { .x = 12, .y = 73, .width = 10, .height = 10 }, // 
+    { .x = 24, .y = 73, .width = 10, .height = 10 }, // 
+    { .x = 36, .y = 73, .width = 10, .height =  9}, // 
+    { .x = 48, .y = 73, .width = 10, .height =  9}, // 
+    { .x = 60, .y = 73, .width = 10, .height = 10}  //
 };
 
 #define FONT_FIRST_TABLE_CHAR '!'
@@ -179,7 +200,7 @@ static void printString(
 
 	// Iterate over every character in the string.
 	for (; *str; str++) {
-		char ch = *str;
+		uint8_t ch = (uint8_t) *str;
 
 		// Check if the character is "special" and shall be handled without
 		// drawing any sprite, or if it's invalid and should be rendered as a
@@ -198,11 +219,10 @@ static void printString(
 			case ' ':
 				currentX += FONT_SPACE_WIDTH;
 				continue;
-
-			case '\x80' ... '\xff':
-				ch = '\x7f';
-				break;
 		}
+		if (ch >= 0x99 && ch <= 0xFF) {
+        	ch = '\x7f'; 
+    	}
 
 		// If the character was not a tab, newline or space, fetch its
 		// respective entry from the sprite coordinate table.
@@ -226,79 +246,216 @@ static void printString(
 #define SCREEN_WIDTH     320
 #define SCREEN_HEIGHT    240
 #define FONT_WIDTH       96
-#define FONT_HEIGHT      56
+#define FONT_HEIGHT      84
 #define FONT_COLOR_DEPTH GP0_COLOR_4BPP
 
 extern const uint8_t fontTexture[], fontPalette[], piTexture[];
 
 #define MAX_LINES 3000   // Maksimum satır sayısı
-#define MAX_LENGTH 31
+#define MAX_LENGTH 60
 
 int loadchecker = 0;
 
 
-size_t list_load(void *sectorBuffer, int LBA){
+/*
+size_t list_load(void *sectorBuffer, int LBA,int listingMode){
+	if(listingMode == 1){
+		uint8_t test[] = {0x50, 0xf1} ;
+		issueCDROMCommand(CDROM_CMD_TEST,test,sizeof(test));
+	} else {
+		uint8_t test[] = {0x50, 0xf3} ;
+		issueCDROMCommand(CDROM_CMD_TEST,test,sizeof(test));
+	}
 
-	uint8_t test[] = {0x50, 0xf1} ;
-	issueCDROMCommand(CDROM_CMD_TEST,test,sizeof(test));
-
-	startCDROMRead(
-		LBA,
-		sectorBuffer,
-		1,
-		2324,
-		true,
-		true
-	);
-	printf("buffer %s\n",sectorBuffer);
-
-
+    // Buffer'ı sıfırlıyoruz
+    memset(sectorBuffer, 0, 2324*5);
+    char **currentSectorBuffer = malloc(6 * sizeof(char *));
+    for (int i = 0; i < 6; i++) {
+        currentSectorBuffer[i] = malloc(2324 * sizeof(char));
+    }
+	for (int i = 0; i < 6; i++) {
+        memset(currentSectorBuffer[i], 0, 2324);
+    }
+    // Her bir sektör için okuma yapıyoruz
+    for (int i = 0; i < 6; i++) {
+		printf("cdrom read %i\n",i);
+        startCDROMRead(LBA + i, currentSectorBuffer[i], 1, 2324, true, true);
+		printf("sector part");
+    }
+    for (int i = 0; i < 6; i++) {
+		printf("sector fill %i\n",i);
+        memcpy(sectorBuffer + (i * 2324), currentSectorBuffer[i], 2324);
+    }
+	for (int i = 0; i < 6; i++) {
+        free(currentSectorBuffer[i]); // Her bir parçayı serbest bırak
+    }
+    free(currentSectorBuffer);
+	printf("sector fill done, returning\n");
 	return 0;
 }
-	
+*/
+int caseInsensitiveCompare(const char *a, const char *b) {
+    while (*a && *b) {
+        char charA = tolower((unsigned char)*a);
+        char charB = tolower((unsigned char)*b);
+        if (charA != charB) {
+            return charA - charB;
+        }
+        a++;
+        b++;
+    }
+    return *a - *b; // Uzunluk farkını kontrol et
+}
 
-void parseLines(char *dataBuffer, char lines[MAX_LINES][MAX_LENGTH], int *lineCount) {
+void swap(char a[], char b[]) {
+    char temp[MAX_LENGTH];
+    strcpy(temp, a);
+    strcpy(a, b);
+    strcpy(b, temp);
+}
+
+void swapIndex(uint16_t *a, uint16_t *b) {
+    uint16_t temp = *a;
+    *a = *b;
+    *b = temp;
+}
+
+// Partition fonksiyonu
+int partition(char lines[][MAX_LENGTH], uint16_t indexes[], int low, int high) {
+    char pivot[MAX_LENGTH];
+    strcpy(pivot, lines[high]); // Pivot elemanı seç
+    int i = (low - 1); // Küçük elemanların indeksini tut
+
+    for (int j = low; j < high; j++) {
+        // Eğer mevcut eleman pivot'tan küçükse
+        if (caseInsensitiveCompare(lines[j], pivot) < 0) {
+            i++; // Küçük elemanların indeksini artır
+            swap(lines[i], lines[j]); // Elemanları değiştir
+            swapIndex(&indexes[i], &indexes[j]); // İndeksleri değiştir
+        }
+    }
+    swap(lines[i + 1], lines[high]); // Pivot'u doğru yerine yerleştir
+    swapIndex(&indexes[i + 1], &indexes[high]);  // Pivot'un indeksini değiştir
+    return (i + 1); // Pivot'un indeksini döndür
+}
+
+// Hızlı sıralama fonksiyonu
+void quickSort(char lines[][MAX_LENGTH], uint16_t indexes[], int low, int high) {
+    if (low < high) {
+        // Partition işlemi
+        int pi = partition(lines, indexes, low, high);
+
+        // Sol ve sağ alt dizileri sıralama
+        quickSort(lines, indexes, low, pi - 1);
+        quickSort(lines, indexes, pi + 1, high);
+    }
+}
+
+
+void list_and_parse(int LBA, int listingMode, char lines[MAX_LINES][MAX_LENGTH], int *lineCount, int *firstboot, uint16_t indexes[MAX_LINES]) {
+    *lineCount = 0;
+    *firstboot = 0;
+
+    uint8_t test[] = {0x50, (listingMode == 1) ? 0xf1 : 0xf3};
+    issueCDROMCommand(CDROM_CMD_TEST, test, sizeof(test));
+
+    char currentLine[MAX_LENGTH];
+    int currentPos = 0;
+	memset(currentLine, 0, sizeof(currentLine));
+    for (int s = 0; s < 6; s++) {
+        uint8_t sector[2048];
+        memset(sector, 0, sizeof(sector));
+        startCDROMRead(LBA+s, sector, 1, 2048, false, true);
+		printf("sector get,%i,sectordata:\n%s",LBA+s,sector);
+        for (int i = 0; i < 2048; i++) {
+            char c = (char)sector[i];
+
+            if (c == '\0') continue;
+
+            if (c == '\n') {
+                if (currentPos > 0 && *lineCount < MAX_LINES) {
+                    currentLine[currentPos] = '\0'; // Null karakter ekle
+                    strncpy(lines[*lineCount], currentLine, MAX_LENGTH);
+                    lines[*lineCount][MAX_LENGTH - 1] = '\0'; // Null karakter ekle
+                    indexes[*lineCount] = *lineCount; // Indexi güncelle
+                    (*lineCount)++;
+                    currentPos = 0; // currentPos'u sıfırla
+                }
+            } else if (c != '\r') {
+                if (currentPos < MAX_LENGTH - 1) {
+                    currentLine[currentPos++] = c; // currentLine dizisine karakter ekle
+                }
+            }
+        }
+
+        if (*lineCount >= MAX_LINES) break; // MAX_LINES sınırını kontrol et
+		delayMicroseconds(150);
+    }
+
+    // Dosya sonunda açık kalan satırı da ekle
+    if (currentPos > 0 && *lineCount < MAX_LINES) {
+        currentLine[currentPos] = '\0'; // Null karakter ekle
+        strncpy(lines[*lineCount], currentLine, MAX_LENGTH);
+        lines[*lineCount][MAX_LENGTH - 1] = '\0'; // Null karakter ekle
+        indexes[*lineCount] = *lineCount; // Indexi güncelle
+        (*lineCount)++;
+    }
+
+    quickSort(lines, indexes, 0, *lineCount - 1);
+}
+
+
+
+
+/*
+void parseLines(char *dataBuffer, char lines[MAX_LINES][MAX_LENGTH], int *lineCount, int *firstboot,uint16_t indexes[MAX_LINES]) {
     if (!dataBuffer) {
+		*firstboot = 2;
         return;
     }
 
-    *lineCount = 0;  // Satır sayısını sıfırla
+    *lineCount = 0; 
     char *start = dataBuffer;
     char *end = dataBuffer;
 
-    while (*start != '\0' && *lineCount < MAX_LINES) {
-        // Satır sonunu bul
+    while (*start != '\0' && *lineCount < MAX_LINES + 1) {
         while (*end != '\n' && *end != '\0') {
             end++;
         }
 
-        // Satırın uzunluğunu hesapla
         int length = end - start;
         if (length >= MAX_LENGTH) {
             length = MAX_LENGTH - 1;
         }
 
-        // Satırı kopyala
         for (int i = 0; i < length; i++) {
             lines[*lineCount][i] = start[i];
         }
-        lines[*lineCount][length] = '\0'; // Null-terminator ekle
+        lines[*lineCount][length] = '\0';
 
         (*lineCount)++;
 
-        // Sonraki satıra geç
         if (*end == '\n') {
             end++;
         }
         start = end;
+		*firstboot = 0;
+		
+		for (int i = 0; i < *lineCount; i++) {
+        	indexes[i] = i;
+    	}
     }
+	quickSort(lines, indexes,0, *lineCount - 1);
+
 }
+//*/
 
 
 
-
-char lines[MAX_LINES][MAX_LENGTH];
-int lineCount = 0;
+char games[MAX_LINES][MAX_LENGTH];
+char dirs[MAX_LINES][MAX_LENGTH];
+int gameLineCount = 0;
+int dirLineCount = 0;
 uint8_t test[] = {0x50, 0xfa, 0xf0,0xf1} ;
 int main(int argc, const char **argv) {
 
@@ -334,36 +491,27 @@ int main(int argc, const char **argv) {
 
 
 	//dummy list
-	//char text[2048] = "Game\nGame\nGame\nGame\nGame\nGame\nGame\nGame\nGame\nGame\nGame\nGame\nGame\nGame\nGame\nGame\nGame\nGame\nGame\nGame\nGame\nGame\nGame\nGame\nGame\nGame\n";
-
-	char txtBuffer[2324];
+	//char txtBuffer[2048] = "123456789012345678901234567890123456789012345678901234567890123456789\nGame\nGame\nGame\nGame\nGame\nGame\nGame\nGame\nGame\nGame\nGame\nGame\nGame\nGame\nGame\nGame\nGame\nGame\nGame\nGame\nGame\nGame\nGame\nGame\nGame\n";
 
 	//file_load("SYSTEM.CNF;1", txtBuffer2);
-
 	//printf("format s %s\n", txtBuffer2);
-///
-
-	list_load(txtBuffer, 100);
 	//printf("disk buffer %s\n", txtBuffer);
-    uint16_t selectedindex = 1;
-
-    char lines[MAX_LINES][MAX_LENGTH];
-    int lineCount = 0;
-    //
-    parseLines((char *)txtBuffer, lines, &lineCount);
-    int startnumber = 0;
-
-
     //uint16_t sectorBuffer[1024];
-    
-    
 
-
-
+    uint16_t selectedindex = 0;
+    int startnumber = 0;
 	int creditsmenu = 0;
-
+	int loadingmenu = 0;
+	int framedelayer = 0;
+	int framedelayer2 = 0;
+	int firstboot = 1;
+	int dirDepth = 0;
+	uint16_t dirFix = 0;
+	char games[MAX_LINES][MAX_LENGTH];
+	char dirs[MAX_LINES][MAX_LENGTH];
+	uint16_t *indexes = malloc(sizeof(uint16_t) * MAX_LINES);
+	uint16_t *indexes2 = malloc(sizeof(uint16_t) * MAX_LINES);
 	uint16_t previousButtons = getButtonPress(0);
-
 	for (;;) {
 		int bufferX = usingSecondFrame ? SCREEN_WIDTH : 0;
 		int bufferY = 0;
@@ -389,153 +537,48 @@ int main(int argc, const char **argv) {
 		ptr[0] = gp0_rgb(64, 64, 64) | gp0_vramFill();
 		ptr[1] = gp0_xy(bufferX, bufferY);
 		ptr[2] = gp0_xy(SCREEN_WIDTH, SCREEN_HEIGHT);
+		if (firstboot == 0 && loadingmenu == 0 && creditsmenu == 0){
+			ptr    = allocatePacket(chain, 3);
+			ptr[0] = gp0_rgb(48, 48, 48) | gp0_rectangle(false, false, false);
+			ptr[1] = gp0_xy(0, 18 + (1+selectedindex-startnumber)*10);
+			ptr[2] = gp0_xy(320, 12);
+		}
+
 		char controllerbuffer[256];
+		
 		//get the controller button press
 
 		snprintf(controllerbuffer, sizeof(controllerbuffer), "%i", getButtonPress(0));
 		//printString(chain, &font, 56,100, controllerbuffer);
 		uint16_t buttons = getButtonPress(0);
 		uint16_t pressedButtons = ~previousButtons & buttons;
-
-
-		if (creditsmenu == 0){
-			if(pressedButtons & BUTTON_MASK_UP)   {
-				if (selectedindex > 1){
-					selectedindex = selectedindex - 1;
-					if(startnumber - selectedindex == 0){
-						startnumber = startnumber - 1;
-					}
-				}
-			}
-			if(pressedButtons & BUTTON_MASK_DOWN)    {
-				printf("DEBUG:DOWN  :%d\n", selectedindex);
-				if (selectedindex < lineCount){
-					selectedindex = selectedindex + 1;
-					if(selectedindex > 20){
-						startnumber = selectedindex - 20;
-					}
-				}
-			}
-
-			if(pressedButtons & BUTTON_MASK_RIGHT)    {
-				if (selectedindex < lineCount - 20){
-					selectedindex = selectedindex +20;
-					startnumber = startnumber+20;
-				}
-			}
-
-
-			if(pressedButtons & BUTTON_MASK_LEFT)    {
-				if (selectedindex > 20){
-					selectedindex = selectedindex - 20;
-					if (startnumber-20 <= 0){
-						startnumber = 0;
-					} else {
-						startnumber = startnumber - 20;
-					}
-				}
-			}
-
-			if(pressedButtons & BUTTON_MASK_START)    {
-					printf("DEBUG: selectedindex :%d\n", selectedindex);
-		//			 SpicyJPEG's code 
-		//			uint8_t test[] = {0x50, 0xd1, 0xab,0xfe} ;
-		//			issueCDROMCommand(0x19,test,sizeof(test));
-					
-		//			 Rama's code 
-		//			StartCommand();
-			//		WriteParam( 0x50 );
-			//		WriteParam( 0xf2 );
-			//		WriteParam( selectedindex );
-					//WriteParam( 0xf1 );
-			//		WriteCommand( 0x19 );
-				//	AckWithTimeout(500000);
-			}
-
-			if(pressedButtons & BUTTON_MASK_X)    {
-				printf("DEBUG:X selectedindex  :%d\n", selectedindex);
-				uint8_t high = (selectedindex >> 8) & 0xFF; // üst 8 bit
-				uint8_t low  = selectedindex & 0xFF; 
-				printf("High: %x, low: %x", high,low);
-			//	 SpicyJPEG's code 
-				uint8_t test[] = {CDROM_TEST_DSP_CMD, 0xF2, high, low} ;
-				issueCDROMCommand(CDROM_CMD_TEST ,test,sizeof(test));
-
-				softReset();
-				
-		//		 Rama's code 
-		//		StartCommand();
-		//		WriteParam( 0x50 );
-		//		WriteParam( 0xd1 );
-		//		WriteParam( 0xab );
-		//		WriteParam( 0xfe );
-		//		WriteCommand( 0x19 );
-		//		AckWithTimeout(500000);
-			}
-
-			if(pressedButtons & BUTTON_MASK_TRIANGLE)    {
-				printf("DEBUG:X selectedindex  :%d\n", selectedindex);
-			//	 reset 
-				uint8_t test[] = {CDROM_TEST_DSP_CMD, 0xfa, 0xBE, 0xEF} ;
-				issueCDROMCommand(CDROM_CMD_TEST,test,sizeof(test));
-				
-			}
-
-
-
-
-			
-			if(pressedButtons & BUTTON_MASK_SELECT)    {
-				creditsmenu = 1;
-			}
-
-
-	//char strbuffer[1024];
-
-			//snprintf(strbuffer, sizeof(strbuffer), "%s", txtBuffer);
-			//printString(chain, &font, 12, 200, strbuffer);	
-			//printf(strbuffer);
-			//if ( loadchecker == 0){
-			//	printString(chain, &font, 12, 220, "file not found");	
-			//} else {
-			//	printString(chain, &font, 12, 220, "file found actually");
-			//	printf("found file\n");
-			//}
-			
-
-
-
-		
-		
+		if (dirDepth > 0){
+			dirFix = 1;
+		} else  {
+			dirFix = 0;
+		}
+		int goup = 0;
+		if (firstboot == 1){
+			printf("entered firstboot\n");
 			printString(
-				chain, &font, 16, 10,
-				"Picostation Game Loader"
-			);
-
-			char fbuffer[32];
-			snprintf(fbuffer, sizeof(fbuffer), "%b, index: %i",usingSecondFrame, selectedindex);
-			printString(chain, &font, 206, 10, fbuffer);	
-
-			for (int i = startnumber; i < startnumber + 20; i++) {
-			
-				char buffer[32];
-
-				snprintf(buffer, sizeof(buffer), "%i -%s", i+1, lines[i]);
-				printString(chain, &font, 12, 30+(i-startnumber)*10, buffer);	
-
-				if(i + 1 == selectedindex){
-
-					printString(
-						chain, &font, 5, 30+(i-startnumber)*10,
-						">"
-					);
+				chain, &font, 40, 80,
+				"LOADING GAME LIST FROM SD CARD...");
+				// We gotta render few layers to be able to show this text
+				if(framedelayer2 < 2){
+					framedelayer2++;
+				} else {
+					memset(games, 0, sizeof(games));
+					memset(dirs, 0, sizeof(dirs));
+					list_and_parse(100, 1, games, &gameLineCount, &firstboot,indexes);
+					list_and_parse(120, 2, dirs, &dirLineCount, &firstboot,indexes2);
+					framedelayer2 = 0;
 
 				}
-				if(i == lineCount- 1 ){
-					break;
-				}
-			}
-		} else {
+		} else if (firstboot == 2){
+			printString(
+				chain, &font, 40, 80,
+				"THERE ARE NO GAMES ON THE SD CARD");
+		} else if (creditsmenu == 1){
 			printString(
 				chain, &font, 40, 40,
 				"Picostation Game Loader Alpha Release"
@@ -549,25 +592,184 @@ int main(int argc, const char **argv) {
 				chain, &font, 40, 120,
 				"https://github.com/raijin/picostation-loader"
 			);
+			printString(
+				chain, &font, 40, 160,
+				"https://psx.dev"
+			);
 
 			if(pressedButtons & BUTTON_MASK_CIRCLE)    {
 				creditsmenu = 0;
 			}
+		} else if(loadingmenu == 1) {
+				printString(
+				chain, &font, 40, 80,
+				"LOADING...");
+				if(framedelayer < 2){
+					framedelayer++;
+				} else {
+					if((selectedindex == 0) & (dirDepth > 0)){
+						uint8_t test[] = {CDROM_TEST_DSP_CMD, 0xF4} ;
+						issueCDROMCommand(CDROM_CMD_TEST ,test,sizeof(test));
+						loadingmenu = 0;
+						dirDepth--;
+						if (dirDepth == 0){
+							dirFix = 0;
+						}
+						firstboot = 1;
+						framedelayer = 0;
+						framedelayer2 = 0;
+						goup = 1;
+						printf("go back! dir depth:%i - dirfix:%i\n",dirDepth,dirFix);
+					}
+					else if(selectedindex < dirLineCount + dirFix){
+						printf("directory change\n");
+						uint16_t sendData = indexes2[selectedindex-dirFix] + 1;
+						uint8_t high = (sendData >> 8) & 0xFF; // üst 8 bit
+						uint8_t low  = sendData & 0xFF; 
+						printf("High: %x, low: %x\n", high,low);
+						uint8_t test[] = {CDROM_TEST_DSP_CMD, 0xF0, high, low} ;
+						issueCDROMCommand(CDROM_CMD_TEST ,test,sizeof(test));
+						loadingmenu = 0;
+						framedelayer = 0;
+						framedelayer = 2;
+						if(goup == 0){
+							dirDepth = dirDepth + 1;			
+						} else {
+							goup = 0;
+						}
+						firstboot = 1;
+						selectedindex = 0;
+					} else {
+						uint16_t sendData = indexes[(selectedindex-(dirLineCount+dirFix))] + 1;
+						printf("game change: %i sendindex:%i selectedindex:%i dirlinecount:%i dirfix: %i\n",sendData,(selectedindex-(dirLineCount+dirFix)), selectedindex,dirLineCount,dirFix);
+						uint8_t high = (sendData >> 8) & 0xFF; // üst 8 bit
+						uint8_t low  = sendData & 0xFF; 
+						printf("High: %x, low: %x", high,low);
+						uint8_t test[] = {CDROM_TEST_DSP_CMD, 0xF2, high, low} ;
+						issueCDROMCommand(CDROM_CMD_TEST ,test,sizeof(test));
+						softFastReboot();
+					}
+						
+				}
+				
+		} else {
+			if(pressedButtons & BUTTON_MASK_UP)   {
+				if (selectedindex > 0){
+					selectedindex = selectedindex - 1;
+					if(startnumber - selectedindex == 1){
+						startnumber = startnumber - 20;
+					}
+				}
+				printf("DEBUG:UP  :%d, startnumber:%d\n", selectedindex, startnumber);
+			}
+			if(pressedButtons & BUTTON_MASK_DOWN)    {
+				
+				if (selectedindex < (dirFix+gameLineCount+dirLineCount-1)){
+					selectedindex = selectedindex + 1;
+					if(selectedindex - startnumber > 19){
+						startnumber = startnumber + 20;
+					}
+				}
+				printf("DEBUG:DOWN  :%d, startnumber:%d\n", selectedindex, startnumber);
+			}
+
+			if(pressedButtons & BUTTON_MASK_RIGHT)    {
+				if((dirFix+gameLineCount+dirLineCount)>20){
+					if (selectedindex <= (gameLineCount+dirLineCount) - 20){
+						selectedindex = selectedindex +20;
+						startnumber = startnumber+20;
+					} else if (selectedindex - ((dirFix+gameLineCount+dirLineCount)- 20) > 0 && (startnumber + selectedindex) < (dirFix+gameLineCount+dirLineCount)){
+						startnumber = startnumber+20;
+						selectedindex = gameLineCount+dirLineCount;
+
+					}
+				}
+				printf("DEBUG:RIGHT  :%d, startnumber:%d\n", selectedindex, startnumber);
+			}
+
+
+			if(pressedButtons & BUTTON_MASK_LEFT)    {
+				
+				if (selectedindex > 19){
+					selectedindex = selectedindex - 20;
+					if (startnumber-20 <= 1){
+						startnumber = 0;
+					} else {
+						startnumber = startnumber - 20;
+					}
+				}
+				printf("DEBUG:LEFT  :%d, startnumber:%d\n", selectedindex, startnumber);
+			}
+
+			if(pressedButtons & BUTTON_MASK_START)    {
+				printf("DEBUG: selectedindex :%d\n", selectedindex);
+				loadingmenu = 1;
+			}
+
+			if(pressedButtons & BUTTON_MASK_X)    {
+				printf("DEBUG:X selectedindex  :%d\n", selectedindex);
+				loadingmenu = 1;
+				//		 Rama's code 
+				//		StartCommand();
+				//		WriteParam( 0x50 );
+				//		WriteParam( 0xd1 );
+				//		WriteParam( 0xab );
+				//		WriteParam( 0xfe );
+				//		WriteCommand( 0x19 );
+				//		AckWithTimeout(500000);
+			}
+
+			if((pressedButtons & BUTTON_MASK_L1) && (pressedButtons & BUTTON_MASK_R1))    {
+				uint8_t test[] = {CDROM_TEST_DSP_CMD, 0xfa, 0xBE, 0xEF} ;
+				issueCDROMCommand(CDROM_CMD_TEST,test,sizeof(test));
+			}
+
+			if(pressedButtons & BUTTON_MASK_SELECT)    {
+				creditsmenu = 1;
+			}
+
+			if(pressedButtons & BUTTON_MASK_TRIANGLE)    {
+				firstboot=1;
+			}
+
+			printString(
+				chain, &font, 16, 10,
+				"Picostation Game Loader"
+			);
+			for (int i = startnumber; i < startnumber + 20; i++) {
+			
+				char buffer[62];
+				if(dirFix == 1 && i == 0){
+					snprintf(buffer, sizeof(buffer), "\x93 Go Back");
+					printString(chain, &font, 5, 30+(i-startnumber)*10, buffer);	
+				}
+				else if(i < dirLineCount+dirFix){
+					snprintf(buffer, sizeof(buffer), "\x92 %s", dirs[i-dirFix],indexes2[i-dirFix]);
+					printString(chain, &font, 5, 30+(i-startnumber)*10, buffer);	
+				} else {
+					snprintf(buffer, sizeof(buffer), "\x8f %s",games[i-(dirFix+dirLineCount)]);
+					printString(chain, &font, 5, 30+(i-startnumber)*10, buffer);	
+				}
+				/*
+				if(i == selectedindex){
+
+					printString(
+						chain, &font, 5, 30+(i-startnumber)*10,
+						">"
+					);
+
+				}
+				*/
+				if(i == (gameLineCount+dirLineCount+dirFix-1)){
+					break;
+				}
+			}
+			//char fbuffer[60];
+			//snprintf(fbuffer, sizeof(fbuffer), "selind: %i,stnum: %i,games: %i,dirs: %i, dirfix:%i, dd:%i", selectedindex,startnumber,gameLineCount,dirLineCount,dirFix,dirDepth);
+			//snprintf(fbuffer, sizeof(fbuffer),"selected index:%i, possible index:%i",(selectedindex-(dirLineCount+dirFix)),(indexes[(selectedindex-(dirLineCount+dirFix))] + 1));
+			//printString(chain, &font, 16, 20, fbuffer);
+
 		}
-
-
-	//	char printBuffer[1024];
-
-   // 	sprintf(printBuffer, "%i", modelLba);
-	//	printf("LBA: %i \n", modelLba);
-
-	//	printString(chain, &font, 56,100, printBuffer);
- 
-
-
-
-
-
 		previousButtons = buttons;
 		*(chain->nextPacket) = gp0_endTag(0);
 		waitForGP0Ready();
