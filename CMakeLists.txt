@@ -80,7 +80,7 @@ endfunction()
 # into the executable. The addBinaryFile() macro is defined in setup.cmake; you
 # may call it multiple times to embed other data into the binary.
 convertImage(assets/font.png 4 fontTexture.dat fontPalette.dat)
-#convertImage(assets/pilogo.png 4 piLogo.dat piPalette.dat)
+convertImage(assets/pilogo.png 4 piLogo.dat piPalette.dat)
 addBinaryFile(picostation-loader fontTexture "${PROJECT_BINARY_DIR}/fontTexture.dat")
 addBinaryFile(picostation-loader fontPalette "${PROJECT_BINARY_DIR}/fontPalette.dat")
 addBinaryFile(picostation-loader piTexture "${PROJECT_BINARY_DIR}/piLogo.dat")
@@ -104,11 +104,45 @@ add_custom_command(
     VERBATIM
 )
 
+# ==============================================================================
+# Image Generation Post-Build Step
+# Generates .psexe image from compiled binary using platform-specific scripts
+# ==============================================================================
+
+# Define script based on platform - fail fast with clear error message
+if(WIN32)
+    set(IMAGE_SCRIPT "${PROJECT_SOURCE_DIR}/makeimage.bat")
+    set(PLATFORM_NAME "Windows")
+else()
+    set(IMAGE_SCRIPT "${PROJECT_SOURCE_DIR}/makeimage.sh")
+    set(PLATFORM_NAME "Unix/Linux")
+endif()
+
+# Validate script exists before proceeding
+if(NOT EXISTS "${IMAGE_SCRIPT}")
+    message(FATAL_ERROR 
+        "Image generation script not found for ${PLATFORM_NAME}: ${IMAGE_SCRIPT}\n"
+        "Please ensure the appropriate script exists in the project root."
+    )
+endif()
+
+# Generate image post-build
 add_custom_command(
-    TARGET     picostation-loader POST_BUILD
-    COMMAND
-        "${PROJECT_SOURCE_DIR}/makeimage.bat"
+    TARGET picostation-loader 
+    POST_BUILD
+    COMMAND 
+        "${IMAGE_SCRIPT}"
         "$<TARGET_FILE:picostation-loader>"
-        picostation-loader.psexe
+        "picostation-loader.psexe"
+    COMMENT "Generating picostation-loader.psexe image for ${PLATFORM_NAME}"
     VERBATIM
+    USES_TERMINAL
+)
+
+# Optional: Add dependency tracking for the script itself
+# This ensures rebuild if the script changes
+set_property(
+    TARGET picostation-loader 
+    APPEND PROPERTY ADDITIONAL_CLEAN_FILES 
+    "${CMAKE_CURRENT_BINARY_DIR}/picostation-loader.psexe"
 )
