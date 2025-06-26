@@ -129,7 +129,6 @@
 	 int widthDivider = (colorDepth == GP0_COLOR_8BPP) ?   2 :  4;
  
 	 assert(!(paletteX % 16) && ((paletteX + numColors) <= 1024));
- 
 	 sendVRAMData(image, x, y, width / widthDivider, height);
 	 waitForDMADone();
 	 sendVRAMData(palette, paletteX, paletteY, numColors, 1);

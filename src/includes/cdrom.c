@@ -193,7 +193,6 @@ void startCDROMRead(uint32_t lba, void *ptr, size_t numSectors, size_t sectorSiz
     printf("Issue CDREAD\n");
     issueCDROMCommand(CDROM_CMD_READ_N, NULL, 0);
     waitForINT3();
-
     if ( !waitingForInt1 ) printf(" what's going on!?\n");
 
     if (wait)

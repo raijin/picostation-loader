@@ -1,6 +1,7 @@
 #pragma once
 
 #include <stdint.h>
+#include <stdbool.h>
 
 // Macros
 
@@ -15,7 +16,7 @@ extern uint8_t gRootDirData[2048];
 
 typedef struct{
    uint32_t lba;
-   uint8_t length;
+   uint32_t length;
    char name[255];
 } DirectoryEntry;
 
@@ -26,3 +27,4 @@ uint32_t getRootDirLba(uint8_t *pvdSector, uint32_t *LBA);
 int parseDirRecord(uint8_t *dataSector, uint8_t *recordLength, DirectoryEntry *directoryEntry);
 void getRootDirData(void *rootDirData);
 uint32_t getLbaToFile(const char *filename);
+bool getFileInfo(const char *filename, DirectoryEntry *output);

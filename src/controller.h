@@ -29,7 +29,9 @@ typedef enum {
     CMD_RESPONSE_CONFIG = 'O', // Configure poll response format (config)
     CMD_CARD_READ       = 'R', // Read 128-byte memory card sector
     CMD_CARD_IDENTIFY   = 'S', // Retrieve memory card size information
-    CMD_CARD_WRITE      = 'W'  // Write 128-byte memory card sector
+    CMD_CARD_WRITE      = 'W', // Write 128-byte memory card sector
+    CMD_GAME_ID_PING    = ' ',
+    CMD_GAME_ID_SEND    = '!'
 } DeviceCommand;
 
 #define BUTTON_MASK_SELECT   (1<< 0)
@@ -48,9 +50,12 @@ typedef enum {
 #define BUTTON_MASK_CIRCLE   (1<<13)
 #define BUTTON_MASK_X        (1<<14)
 #define BUTTON_MASK_SQUARE   (1<<15)
+#define BYTE_DELAY 30
 
 
 //void delayMicroseconds(int time);
+void sendPacketNoAcknowledge(DeviceAddress address, const uint8_t *request, int reqLength);
+void sendGameID(const char *str);
 void initControllerBus(void);
 bool waitForAcknowledge(int timeout);
 void selectPort(int port);
@@ -60,3 +65,5 @@ int exchangePacket(
     int reqLength, int maxRespLength
 );
 uint16_t getButtonPress(int port);
+
+

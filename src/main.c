@@ -36,7 +36,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
-#include <stdlib.h>
+//#include <stdlib.h>
 #include <string.h>
 #include "ps1/gpucmd.h"
 #include "ps1/registers.h"
@@ -176,7 +176,9 @@ static const SpriteInfo fontSprites[] = {
     { .x = 24, .y = 73, .width = 10, .height = 10 }, // 
     { .x = 36, .y = 73, .width = 10, .height =  9}, // 
     { .x = 48, .y = 73, .width = 10, .height =  9}, // 
-    { .x = 60, .y = 73, .width = 10, .height = 10}  //
+    { .x = 60, .y = 73, .width = 10, .height = 10},  //
+	{ .x = 72, .y = 73, .width = 10, .height = 10},  //
+	{ .x = 85, .y = 73, .width = 8, .height = 8}  //
 };
 
 #define FONT_FIRST_TABLE_CHAR '!'
@@ -243,15 +245,17 @@ static void printString(
 	}
 }
 
+
+
 #define SCREEN_WIDTH     320
 #define SCREEN_HEIGHT    240
 #define FONT_WIDTH       96
 #define FONT_HEIGHT      84
 #define FONT_COLOR_DEPTH GP0_COLOR_4BPP
 
-extern const uint8_t fontTexture[], fontPalette[], piTexture[];
+extern const uint8_t fontTexture[], fontPalette[], logoTexture[], logoPalette[];
 
-#define MAX_LINES 3000   // Maksimum satır sayısı
+#define MAX_LINES 4096   // Maksimum satır sayısı
 #define MAX_LENGTH 60
 
 int loadchecker = 0;
@@ -355,54 +359,103 @@ void quickSort(char lines[][MAX_LENGTH], uint16_t indexes[], int low, int high) 
 void list_and_parse(int LBA, int listingMode, char lines[MAX_LINES][MAX_LENGTH], int *lineCount, int *firstboot, uint16_t indexes[MAX_LINES]) {
     *lineCount = 0;
     *firstboot = 0;
-
-    uint8_t test[] = {0x50, (listingMode == 1) ? 0xf1 : 0xf3};
-    issueCDROMCommand(CDROM_CMD_TEST, test, sizeof(test));
+    int retryAttempt = 0;
 
     char currentLine[MAX_LENGTH];
     int currentPos = 0;
-	memset(currentLine, 0, sizeof(currentLine));
-    for (int s = 0; s < 6; s++) {
+    memset(currentLine, 0, sizeof(currentLine));
+
+	const char* startTag = "<starttransfer>";
+	const char* endTag = "<endtransfer>";
+	const char* continueTag = "<continue>";
+	size_t startTagLen = strlen(startTag);
+
+
+    for (int s = 0; s < 450; s++) {
+        uint16_t sendData = s;
+        uint8_t high = (sendData >> 8) & 0xFF;
+        uint8_t low  = sendData & 0xFF;
+        uint8_t test[] = {0x50, (listingMode == 1) ? 0xf1 : 0xf3, high, low};
+        issueCDROMCommand(CDROM_CMD_TEST, test, sizeof(test));
+
         uint8_t sector[2048];
         memset(sector, 0, sizeof(sector));
-        startCDROMRead(LBA+s, sector, 1, 2048, false, true);
-		printf("sector get,%i,sectordata:\n%s",LBA+s,sector);
-        for (int i = 0; i < 2048; i++) {
-            char c = (char)sector[i];
+        startCDROMRead(LBA, sector, 1, 2048, false, true);
+        printf("sector get,%i,sectordata:\n%s", LBA, sector);
 
+
+        if (memcmp(sector, startTag, startTagLen) == 0) {
+            memmove(sector, sector + startTagLen, 2048 - startTagLen);
+            memset(sector + 2048 - startTagLen, 0, startTagLen);
+        } else {
+            s--; // retry
+            retryAttempt++;
+            if (retryAttempt > 1000) break;
+			printf("No data, retry\n");
+        //    delayMicrosecondsBusy(10000);
+            continue;
+        }
+
+        // Eğer endTag varsa, onun pozisyonunu bul
+        char* endTagPos = strstr((char*)sector, endTag);
+        char* continueTagPos = strstr((char*)sector, continueTag);
+        size_t limit = 2048;
+
+        if (endTagPos) {
+            limit = (size_t)(endTagPos - (char*)sector);
+        } else if (continueTagPos) {
+            limit = (size_t)(continueTagPos - (char*)sector);
+        }
+
+		
+        for (size_t i = 0; i < limit; i++) {
+            char c = (char)sector[i];
             if (c == '\0') continue;
 
             if (c == '\n') {
                 if (currentPos > 0 && *lineCount < MAX_LINES) {
-                    currentLine[currentPos] = '\0'; // Null karakter ekle
-                    strncpy(lines[*lineCount], currentLine, MAX_LENGTH);
-                    lines[*lineCount][MAX_LENGTH - 1] = '\0'; // Null karakter ekle
-                    indexes[*lineCount] = *lineCount; // Indexi güncelle
-                    (*lineCount)++;
-                    currentPos = 0; // currentPos'u sıfırla
+                    currentLine[currentPos] = '\0';
+
+                    // Eğer <continue> veya <endtransfer> gelirse listeye ekleme
+                    if (strcmp(currentLine, continueTag) != 0 && strcmp(currentLine, endTag) != 0) {
+                        strncpy(lines[*lineCount], currentLine, MAX_LENGTH);
+                        lines[*lineCount][MAX_LENGTH - 1] = '\0';
+                        indexes[*lineCount] = *lineCount;
+                        (*lineCount)++;
+                    }
+
+                    currentPos = 0;
                 }
             } else if (c != '\r') {
                 if (currentPos < MAX_LENGTH - 1) {
-                    currentLine[currentPos++] = c; // currentLine dizisine karakter ekle
+                    currentLine[currentPos++] = c;
                 }
             }
         }
 
-        if (*lineCount >= MAX_LINES) break; // MAX_LINES sınırını kontrol et
-		delayMicroseconds(150);
+        if (endTagPos != NULL) {
+            break; // <endtransfer> bulundu
+        }
+
+        if (*lineCount >= MAX_LINES) break;
     }
 
-    // Dosya sonunda açık kalan satırı da ekle
+    // Eğer son satır \n ile bitmemişse, onu da ekle
     if (currentPos > 0 && *lineCount < MAX_LINES) {
-        currentLine[currentPos] = '\0'; // Null karakter ekle
-        strncpy(lines[*lineCount], currentLine, MAX_LENGTH);
-        lines[*lineCount][MAX_LENGTH - 1] = '\0'; // Null karakter ekle
-        indexes[*lineCount] = *lineCount; // Indexi güncelle
-        (*lineCount)++;
+        currentLine[currentPos] = '\0';
+        if (strcmp(currentLine, continueTag) != 0 && strcmp(currentLine, endTag) != 0) {
+            strncpy(lines[*lineCount], currentLine, MAX_LENGTH);
+            lines[*lineCount][MAX_LENGTH - 1] = '\0';
+            indexes[*lineCount] = *lineCount;
+            (*lineCount)++;
+        }
     }
 
     quickSort(lines, indexes, 0, *lineCount - 1);
 }
+
+
+
 
 
 
@@ -451,12 +504,11 @@ void parseLines(char *dataBuffer, char lines[MAX_LINES][MAX_LENGTH], int *lineCo
 //*/
 
 
-
 char games[MAX_LINES][MAX_LENGTH];
 char dirs[MAX_LINES][MAX_LENGTH];
 int gameLineCount = 0;
 int dirLineCount = 0;
-uint8_t test[] = {0x50, 0xfa, 0xf0,0xf1} ;
+//uint8_t test[] = {0x50, 0xfa, 0xf0,0xf1} ;
 int main(int argc, const char **argv) {
 
 	initIRQ();
@@ -479,12 +531,22 @@ int main(int argc, const char **argv) {
 	GPU_GP1 = gp1_dispBlank(false);
 
 	TextureInfo font;
+	TextureInfo logo;
 
 	uploadIndexedTexture(
 		&font, fontTexture, fontPalette, SCREEN_WIDTH * 2, 0, SCREEN_WIDTH * 2,
 		FONT_HEIGHT, FONT_WIDTH, FONT_HEIGHT, FONT_COLOR_DEPTH
 	);
+	#define TEXTURE_WIDTH       128
+	#define TEXTURE_HEIGHT      20
+	#define TEXTURE_COLOR_DEPTH GP0_COLOR_4BPP
+	
 
+	uploadIndexedTexture(
+		&logo, logoTexture, logoPalette, SCREEN_WIDTH * 2, FONT_WIDTH,
+		SCREEN_WIDTH * 2, TEXTURE_HEIGHT + (FONT_WIDTH*2), TEXTURE_WIDTH, TEXTURE_HEIGHT,
+		TEXTURE_COLOR_DEPTH
+	);
 
 	DMAChain dmaChains[2];
 	bool     usingSecondFrame = false;
@@ -506,11 +568,13 @@ int main(int argc, const char **argv) {
 	int framedelayer2 = 0;
 	int firstboot = 1;
 	int dirDepth = 0;
+	int gamePerPage = 18;
 	uint16_t dirFix = 0;
+	int slowboot = 0;
 	char games[MAX_LINES][MAX_LENGTH];
 	char dirs[MAX_LINES][MAX_LENGTH];
-	uint16_t *indexes = malloc(sizeof(uint16_t) * MAX_LINES);
-	uint16_t *indexes2 = malloc(sizeof(uint16_t) * MAX_LINES);
+	uint16_t indexes[MAX_LINES];
+	uint16_t indexes2[MAX_LINES];
 	uint16_t previousButtons = getButtonPress(0);
 	for (;;) {
 		int bufferX = usingSecondFrame ? SCREEN_WIDTH : 0;
@@ -543,6 +607,15 @@ int main(int argc, const char **argv) {
 			ptr[1] = gp0_xy(0, 18 + (1+selectedindex-startnumber)*10);
 			ptr[2] = gp0_xy(320, 12);
 		}
+		if (firstboot == 0 && loadingmenu == 0){
+			ptr    = allocatePacket(chain, 5);
+			ptr[0] = gp0_texpage(logo.page, false, false);
+			ptr[1] = gp0_rectangle(true, true, true);
+			ptr[2] = gp0_xy(96, 2);
+			ptr[3] = gp0_uv(logo.u, logo.v, logo.clut);
+			ptr[4] = gp0_xy(logo.width, logo.height);
+		}
+
 
 		char controllerbuffer[256];
 		
@@ -560,6 +633,7 @@ int main(int argc, const char **argv) {
 		int goup = 0;
 		if (firstboot == 1){
 			printf("entered firstboot\n");
+			
 			printString(
 				chain, &font, 40, 80,
 				"LOADING GAME LIST FROM SD CARD...");
@@ -567,10 +641,17 @@ int main(int argc, const char **argv) {
 				if(framedelayer2 < 2){
 					framedelayer2++;
 				} else {
-					memset(games, 0, sizeof(games));
-					memset(dirs, 0, sizeof(dirs));
+					printf("empty butters\n");
+					for (int i = 0; i < MAX_LINES; i++) {
+						memset(games[i], 0, MAX_LENGTH); // games dizisini sıfırla
+						if(i<101){
+							memset(dirs[i], 0, MAX_LENGTH);  // dirs dizisini sıfırla
+						}
+					}
+					printf("buffer empty done\n");
 					list_and_parse(100, 1, games, &gameLineCount, &firstboot,indexes);
-					list_and_parse(120, 2, dirs, &dirLineCount, &firstboot,indexes2);
+					list_and_parse(100, 2, dirs, &dirLineCount, &firstboot,indexes2);
+					printf("finished game loading\n");
 					framedelayer2 = 0;
 
 				}
@@ -619,6 +700,8 @@ int main(int argc, const char **argv) {
 						framedelayer = 0;
 						framedelayer2 = 0;
 						goup = 1;
+						startnumber = 0;
+						selectedindex = 0;
 						printf("go back! dir depth:%i - dirfix:%i\n",dirDepth,dirFix);
 					}
 					else if(selectedindex < dirLineCount + dirFix){
@@ -631,7 +714,7 @@ int main(int argc, const char **argv) {
 						issueCDROMCommand(CDROM_CMD_TEST ,test,sizeof(test));
 						loadingmenu = 0;
 						framedelayer = 0;
-						framedelayer = 2;
+						framedelayer2 = 0;
 						if(goup == 0){
 							dirDepth = dirDepth + 1;			
 						} else {
@@ -639,15 +722,66 @@ int main(int argc, const char **argv) {
 						}
 						firstboot = 1;
 						selectedindex = 0;
+						startnumber = 0;
+
 					} else {
 						uint16_t sendData = indexes[(selectedindex-(dirLineCount+dirFix))] + 1;
 						printf("game change: %i sendindex:%i selectedindex:%i dirlinecount:%i dirfix: %i\n",sendData,(selectedindex-(dirLineCount+dirFix)), selectedindex,dirLineCount,dirFix);
 						uint8_t high = (sendData >> 8) & 0xFF; // üst 8 bit
 						uint8_t low  = sendData & 0xFF; 
-						printf("High: %x, low: %x", high,low);
+						printf("High: %x, low: %x \n", high,low);
 						uint8_t test[] = {CDROM_TEST_DSP_CMD, 0xF2, high, low} ;
 						issueCDROMCommand(CDROM_CMD_TEST ,test,sizeof(test));
-						softFastReboot();
+						delayMicroseconds(200);
+						DirectoryEntry file;
+
+						char gameID[2048];
+						memset(gameID, 0, 2048);
+
+						if (!getFileInfo("SYSTEM.CNF;1", &file))
+							strcpy(gameID, "cdrom:\\PS.EXE;1\0");
+
+						// need one more character for the null terminator
+						size_t stringLength = file.length + 1;
+
+						// round up to the nearest multiple of 2048 bytes
+						size_t numSectors = (stringLength + 2047) / 2048;
+						
+
+						startCDROMRead(file.lba, gameID, numSectors, 2048, true, true);
+
+						// insert the null terminator at the end
+						gameID[file.length] = 0;
+						printf("File contents:\n%s\n", gameID);
+
+						
+						
+						char firstLine[500];
+						memset(firstLine, 0, 500);
+
+						int i = 0;
+						int j = 0;
+						while (gameID[i] != '\0' && gameID[i] != '\n' && i < sizeof(firstLine) - 1) {
+							if (gameID[i] != ' ' && gameID[i] != '\t') { // Boşluk karakterini kontrol et
+								firstLine[j] = gameID[i]; // j, firstLine dizisinin indeksidir
+								j++; // j'yi artır
+							}
+							i++; // i'yi artır
+						}
+						firstLine[j] = '\0';
+						 if (strncmp(firstLine, "BOOT=", 5) == 0) {
+							memmove(firstLine, firstLine + 5, strlen(firstLine) - 4);
+						}
+						printf("got the string: %s\n",firstLine);
+
+						sendGameID(firstLine);
+						//issueCDROMCommand(CDROM_CMD_TEST ,test,sizeof(test));
+						initFilesystem();
+						if(slowboot == 0)
+							
+							softFastReboot();
+						else
+						 	softReset();
 					}
 						
 				}
@@ -657,7 +791,7 @@ int main(int argc, const char **argv) {
 				if (selectedindex > 0){
 					selectedindex = selectedindex - 1;
 					if(startnumber - selectedindex == 1){
-						startnumber = startnumber - 20;
+						startnumber = startnumber - gamePerPage;
 					}
 				}
 				printf("DEBUG:UP  :%d, startnumber:%d\n", selectedindex, startnumber);
@@ -666,21 +800,21 @@ int main(int argc, const char **argv) {
 				
 				if (selectedindex < (dirFix+gameLineCount+dirLineCount-1)){
 					selectedindex = selectedindex + 1;
-					if(selectedindex - startnumber > 19){
-						startnumber = startnumber + 20;
+					if(selectedindex - startnumber > (gamePerPage-1)){
+						startnumber = startnumber + gamePerPage;
 					}
 				}
 				printf("DEBUG:DOWN  :%d, startnumber:%d\n", selectedindex, startnumber);
 			}
 
 			if(pressedButtons & BUTTON_MASK_RIGHT)    {
-				if((dirFix+gameLineCount+dirLineCount)>20){
-					if (selectedindex <= (gameLineCount+dirLineCount) - 20){
-						selectedindex = selectedindex +20;
-						startnumber = startnumber+20;
-					} else if (selectedindex - ((dirFix+gameLineCount+dirLineCount)- 20) > 0 && (startnumber + selectedindex) < (dirFix+gameLineCount+dirLineCount)){
-						startnumber = startnumber+20;
-						selectedindex = gameLineCount+dirLineCount;
+				if((dirFix+gameLineCount+dirLineCount)>gamePerPage){
+					if (selectedindex < (gameLineCount+dirLineCount) - gamePerPage){
+						selectedindex = selectedindex +gamePerPage;
+						startnumber = startnumber+gamePerPage;
+					} else if (selectedindex - ((dirFix+gameLineCount+dirLineCount)- gamePerPage) >= 0 && (gamePerPage + startnumber) <= (dirFix+gameLineCount+dirLineCount)){
+						startnumber = startnumber+gamePerPage;
+						selectedindex = gameLineCount+dirLineCount-1;
 
 					}
 				}
@@ -690,12 +824,12 @@ int main(int argc, const char **argv) {
 
 			if(pressedButtons & BUTTON_MASK_LEFT)    {
 				
-				if (selectedindex > 19){
-					selectedindex = selectedindex - 20;
-					if (startnumber-20 <= 1){
+				if (selectedindex > (gamePerPage-1)){
+					selectedindex = selectedindex - gamePerPage;
+					if (startnumber-gamePerPage <= 1){
 						startnumber = 0;
 					} else {
-						startnumber = startnumber - 20;
+						startnumber = startnumber - gamePerPage;
 					}
 				}
 				printf("DEBUG:LEFT  :%d, startnumber:%d\n", selectedindex, startnumber);
@@ -704,11 +838,13 @@ int main(int argc, const char **argv) {
 			if(pressedButtons & BUTTON_MASK_START)    {
 				printf("DEBUG: selectedindex :%d\n", selectedindex);
 				loadingmenu = 1;
+				slowboot = 1;
 			}
 
 			if(pressedButtons & BUTTON_MASK_X)    {
 				printf("DEBUG:X selectedindex  :%d\n", selectedindex);
 				loadingmenu = 1;
+				slowboot = 0;
 				//		 Rama's code 
 				//		StartCommand();
 				//		WriteParam( 0x50 );
@@ -729,19 +865,24 @@ int main(int argc, const char **argv) {
 			}
 
 			if(pressedButtons & BUTTON_MASK_TRIANGLE)    {
-				firstboot=1;
+			//	firstboot=1;
 			}
 
-			printString(
-				chain, &font, 16, 10,
-				"Picostation Game Loader"
-			);
-			for (int i = startnumber; i < startnumber + 20; i++) {
+			if(pressedButtons & BUTTON_MASK_SQUARE){
+
+			}
+
+
+
+			for (int i = startnumber; i < startnumber + gamePerPage; i++) {
 			
 				char buffer[62];
 				if(dirFix == 1 && i == 0){
 					snprintf(buffer, sizeof(buffer), "\x93 Go Back");
 					printString(chain, &font, 5, 30+(i-startnumber)*10, buffer);	
+				}
+				else if (gameLineCount+dirLineCount < 1 || i > (gameLineCount+dirLineCount+dirFix-1)){
+					break;
 				}
 				else if(i < dirLineCount+dirFix){
 					snprintf(buffer, sizeof(buffer), "\x92 %s", dirs[i-dirFix],indexes2[i-dirFix]);
@@ -759,15 +900,20 @@ int main(int argc, const char **argv) {
 					);
 
 				}
-				*/
+				
 				if(i == (gameLineCount+dirLineCount+dirFix-1)){
 					break;
-				}
+				}*/
 			}
-			//char fbuffer[60];
+			char fbuffer[60];
 			//snprintf(fbuffer, sizeof(fbuffer), "selind: %i,stnum: %i,games: %i,dirs: %i, dirfix:%i, dd:%i", selectedindex,startnumber,gameLineCount,dirLineCount,dirFix,dirDepth);
 			//snprintf(fbuffer, sizeof(fbuffer),"selected index:%i, possible index:%i",(selectedindex-(dirLineCount+dirFix)),(indexes[(selectedindex-(dirLineCount+dirFix))] + 1));
-			//printString(chain, &font, 16, 20, fbuffer);
+			snprintf(fbuffer, sizeof(fbuffer), "Page: %i/%i",((startnumber/gamePerPage)+1),(((gameLineCount+dirLineCount+dirFix)/gamePerPage)+1));
+			printString(chain, &font, 16, 20, fbuffer);
+			printString(chain, &font, 16, 212, "\x95: Fast Boot / \x96 Regular Boot");
+			
+			//					printf("finished prints\n");
+
 
 		}
 		previousButtons = buttons;

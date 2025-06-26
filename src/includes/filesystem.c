@@ -2,6 +2,7 @@
 #include "stdbool.h"
 #include "cdrom.h"
 #include "stdio.h"
+//#include "string.h"
 // Internal global variable for this lib. Hides away the rootDirData for internal use.
 uint8_t rootDirData[2048];
 
@@ -102,4 +103,25 @@ uint32_t getLbaToFile(const char *filename){
         }
     }
     return 0;
+}
+
+bool getFileInfo(const char *filename, DirectoryEntry *output){
+    uint8_t  recLen;
+    int offset = 0;
+    initFilesystem();
+    while(offset < 2048){
+        if(parseDirRecord(
+            &rootDirData[offset],
+            &recLen,
+            output
+        ))
+           break;
+
+        offset += recLen;
+        printf(" Read file name: %s\t| %s\n", output->name, __builtin_strcmp(output->name, filename) ? "False" : "True");
+
+        if(!__builtin_strcmp(output->name, filename))
+            return true;
+    }
+    return false; // file not found
 }

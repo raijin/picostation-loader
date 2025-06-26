@@ -36,6 +36,9 @@
 
  #include <stdbool.h>
  #include <stdint.h>
+ #include <stdlib.h>
+#include <string.h>
+
 
  #include "ps1/registers.h"
  #include "controller.h"
@@ -103,8 +106,11 @@ bool waitForAcknowledge(int timeout) {
  
 
  
- #define DTR_DELAY   60
- #define DSR_TIMEOUT 120
+ #define DTR_DELAY       150
+ #define DTR_PRE_DELAY   10
+ #define DTR_POST_DELAY  10
+ #define DTR_PACKET_DELAY 200
+ #define DSR_TIMEOUT     120
  
  void selectPort(int port) {
      // Set or clear the bit that controls which set of controller and memory
@@ -138,6 +144,7 @@ bool waitForAcknowledge(int timeout) {
      // Reset the interrupt flag and assert the DTR signal to tell the controller
      // or memory card that we're about to send a packet. Devices may take some
      // time to prepare for incoming bytes so we need a small delay here.
+     delayMicroseconds(DTR_PRE_DELAY);
      IRQ_STAT     = ~(1 << IRQ_SIO0);
      SIO_CTRL(0) |= SIO_CTRL_DTR | SIO_CTRL_ACKNOWLEDGE;
      delayMicroseconds(DTR_DELAY);
@@ -178,7 +185,7 @@ bool waitForAcknowledge(int timeout) {
      // Release DSR, allowing the device to go idle.
      delayMicroseconds(DTR_DELAY);
      SIO_CTRL(0) &= ~SIO_CTRL_DTR;
- 
+     delayMicroseconds(DTR_POST_DELAY);
      return respLength;
  }
  
@@ -276,3 +283,41 @@ bool waitForAcknowledge(int timeout) {
     //     ptr += sprintf(ptr, "%02X ", response[i]);
 
  }
+
+
+void sendPacketNoAcknowledge(
+    DeviceAddress address, const uint8_t *request, int reqLength
+) {
+    IRQ_STAT     = ~(1 << IRQ_SIO0);
+    SIO_CTRL(0) |= SIO_CTRL_DTR | SIO_CTRL_ACKNOWLEDGE;
+    delayMicroseconds(DTR_DELAY);
+
+    SIO_DATA(0) = address;
+    delayMicroseconds(BYTE_DELAY);
+    while (SIO_STAT(0) & SIO_STAT_RX_NOT_EMPTY)
+        SIO_DATA(0);
+
+    for (; reqLength > 0; reqLength--) {
+        exchangeByte(*(request++));
+        delayMicroseconds(BYTE_DELAY);
+    }
+
+    delayMicroseconds(DTR_DELAY);
+    SIO_CTRL(0) &= ~SIO_CTRL_DTR;
+}
+
+void sendGameID(const char *str) {
+    uint8_t request[64];
+    size_t  length = strlen(str) + 1;
+
+    request[0] = CMD_GAME_ID_SEND;
+    request[1] = 0;
+    request[2] = length;
+    __builtin_strncpy(&request[3], str, length);
+
+    // Send the ID on both ports.
+    for (int i = 0; i < 2; i++) {
+        selectPort(i);
+        sendPacketNoAcknowledge(ADDR_MEMORY_CARD, request, length+3);
+    }
+}

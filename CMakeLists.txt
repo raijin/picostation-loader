@@ -80,11 +80,11 @@ endfunction()
 # into the executable. The addBinaryFile() macro is defined in setup.cmake; you
 # may call it multiple times to embed other data into the binary.
 convertImage(assets/font.png 4 fontTexture.dat fontPalette.dat)
-#convertImage(assets/pilogo.png 4 piLogo.dat piPalette.dat)
+convertImage(assets/picostationlogo.png 4 logoTexture.dat logoPalette.dat)
 addBinaryFile(picostation-loader fontTexture "${PROJECT_BINARY_DIR}/fontTexture.dat")
 addBinaryFile(picostation-loader fontPalette "${PROJECT_BINARY_DIR}/fontPalette.dat")
-addBinaryFile(picostation-loader piTexture "${PROJECT_BINARY_DIR}/piLogo.dat")
-addBinaryFile(picostation-loader piPalette "${PROJECT_BINARY_DIR}/piPalette.dat")
+addBinaryFile(picostation-loader logoTexture "${PROJECT_BINARY_DIR}/logoTexture.dat")
+addBinaryFile(picostation-loader logoPalette "${PROJECT_BINARY_DIR}/logoPalette.dat")
 
 
 
