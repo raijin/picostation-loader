@@ -17,7 +17,8 @@
 			"ios": "c",
 			"xiosbase": "c",
 			"system.h": "c",
-			"modplayer.h": "c"
+			"modplayer.h": "c",
+			"gte.h": "c"
 		}
 	}
 }

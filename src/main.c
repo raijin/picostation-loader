@@ -50,6 +50,8 @@
 #include "file_manager.h"
 #include "modplayer.h"
 #include "counters.h"
+#include "ps1/gte.h"
+
 
 #define MAX(a, b) ((a) > (b) ? (a) : (b))
 #define MIN(a, b) ((a) < (b) ? (a) : (b))
@@ -188,6 +190,17 @@ static const SpriteInfo fontSprites[] = {
 	{.x = 85, .y = 73, .width = 8, .height = 8}  //
 };
 
+static const int8_t Scroll_SineTable[64] = {
+     0,  12,  25,  37,  49,  60,  71,  81,
+    90,  98, 106, 112, 117, 122, 125, 126,
+   127, 126, 125, 122, 117, 112, 106,  98,
+    90,  81,  71,  60,  49,  37,  25,  12,
+     0, -12, -25, -37, -49, -60, -71, -81,
+   -90, -98,-106,-112,-117,-122,-125,-126,
+  -127,-126,-125,-122,-117,-112,-106, -98,
+   -90, -81, -71, -60, -49, -37, -25, -12
+};
+
 typedef enum
 {
 	MENU_COMMAND_NONE = 0x0,
@@ -228,8 +241,7 @@ static void sendCommand(uint8_t command, uint16_t argument)
 	issueCDROMCommand(CDROM_CMD_TEST, test, sizeof(test));
 }
 
-static void printString(
-	DMAChain *chain, const TextureInfo *font, int x, int y, const char *str)
+static void printString(DMAChain *chain, const TextureInfo *font, int x, int y, const char *str)
 {
 	int currentX = x, currentY = y;
 
@@ -275,6 +287,15 @@ static void printString(
 		// respective entry from the sprite coordinate table.
 		const SpriteInfo *sprite = &fontSprites[ch - FONT_FIRST_TABLE_CHAR];
 
+		// int index = ch - 32;
+		// SpriteInfo temp;
+		// temp.x = (index % 16) * 8; 
+		// temp.y = (index / 16) * 8; 
+		// temp.width = 6;
+		// temp.height = 8;
+
+		// const SpriteInfo *sprite = &temp;
+
 		// Draw the character, summing the UV coordinates of the spritesheet in
 		// VRAM to those of the sprite itself within the sheet. Enable blending
 		// to make sure any semitransparent pixels in the font get rendered
@@ -287,6 +308,111 @@ static void printString(
 
 		// Move onto the next character.
 		currentX += sprite->width;
+	}
+}
+
+static int delay = 0;
+static int string_offset = 0;
+static int sine_offset = 0;
+static int x_ofs = 0;
+
+static inline uint32_t gp0_vertex_uv(int x, int y, int u, int v, uint16_t clut)
+{
+    return ((v & 0xFF) << 24) | ((u & 0xFF) << 16) | ((y & 0xFFFF) << 8) | (x & 0xFF);
+    // Note: clut is usually passed separately, or stored in first command
+}
+
+static void printScroll(DMAChain *chain, const TextureInfo *font, int x, int y, const char *str)
+{
+	int currentX = x, currentY = y;
+	int scrollIndex = 0;
+
+	uint32_t *ptr;
+
+	// Start by sending a texpage command to tell the GPU to use the font's
+	// spritesheet. Note that the texpage command before a drawing command can
+	// be omitted when reusing the same texture, so sending it here just once is
+	// enough.
+	ptr = allocatePacket(chain, 1);
+	ptr[0] = gp0_texpage(font->page, false, false);
+
+	int stringlen = strlen(str);
+	int offset = 0;
+
+	uint8_t ch2 = (uint8_t)str[string_offset];
+	int scrollWidth = ch2 == 32 ? FONT_SPACE_WIDTH : fontSprites[ch2 - FONT_FIRST_TABLE_CHAR].width;
+
+	// delay2 += 1;
+	// if (delay2 == 2)
+	// {
+		x_ofs+=1;
+		if (x_ofs >= scrollWidth)
+		{
+			string_offset = (string_offset + 1) % stringlen;
+			x_ofs = 0;
+		}
+	// 	delay2 = 0;
+		
+	// }
+
+	// Iterate over every character in the string.
+	while (true)
+	{
+
+
+		int sine_lookup = (scrollIndex + sine_offset) % 64;
+		currentY = y + ((Scroll_SineTable[sine_lookup] * 20) / 128);
+		scrollIndex = (scrollIndex + 1) % 64;
+
+		delay += 1;
+		if (delay == 50)
+		{
+			sine_offset = (sine_offset + 1) % 64;
+			//string_offset+=1;
+			delay = 0;
+		}
+
+		
+		uint8_t ch = (uint8_t)str[(offset + string_offset) % stringlen];
+		offset++;
+
+		if (ch == 32)
+		{
+			currentX += FONT_SPACE_WIDTH;
+			continue;
+		}
+
+			const SpriteInfo *sprite = &fontSprites[ch - FONT_FIRST_TABLE_CHAR];
+		// If the character was not a tab, newline or space, fetch its
+		// respective entry from the sprite coordinate table.
+
+
+		// int index = ch - 32;
+		// SpriteInfo temp;
+		// temp.x = (index % 16) * 8; 
+		// temp.y = (index / 16) * 8; 
+		// temp.width = 6;
+		// temp.height = 8;
+
+		// const SpriteInfo *sprite = &temp;
+
+		// Draw the character, summing the UV coordinates of the spritesheet in
+		// VRAM to those of the sprite itself within the sheet. Enable blending
+		// to make sure any semitransparent pixels in the font get rendered
+		// correctly.
+		ptr = allocatePacket(chain, 4);
+		ptr[0] = gp0_rectangle(true, true, true);
+		ptr[1] = gp0_xy(currentX - x_ofs, currentY);
+		ptr[2] = gp0_uv(font->u + sprite->x, font->v + sprite->y, font->clut);
+		ptr[3] = gp0_xy(sprite->width, sprite->height);
+
+		// Move onto the next character.
+		currentX += sprite->width;
+
+		if (currentX - x_ofs > 320)
+		{
+			break;;
+		}
 	}
 }
 
@@ -375,8 +501,6 @@ static void checkMusic() {
 int main(int argc, const char **argv)
 {
 	COUNTERS[1].mode = 0x0100;
-    MOD_Load((struct MODFileFormat*)timewarped_hit);
-	s_nextCounter = COUNTERS[1].value + MOD_hblanks;
 
 	initIRQ();
 	initSerialIO(115200);
@@ -492,7 +616,17 @@ int main(int argc, const char **argv)
 
 		if (pressedButtons & BUTTON_MASK_SELECT)
 		{
-			creditsmenu = creditsmenu == 0 ? 1 : 0;
+			if (creditsmenu == 0)
+			{
+				creditsmenu = 1;
+				MOD_Load((struct MODFileFormat*)timewarped_hit);
+				s_nextCounter = COUNTERS[1].value + MOD_hblanks;
+			}
+			else
+			{
+				creditsmenu = 0;
+				MOD_Silence();
+			}
 		}
 
 		if (creditsmenu == 0)
@@ -596,14 +730,17 @@ int main(int argc, const char **argv)
 		{
 			printString(
 				chain, &font, 40, 40,
-				"PicosSation Plus Menu Alpha Release");
-			printString(
-				chain, &font, 40, 80,
-				"Huge thanks to Rama, Skitchin, Raijin, SpicyJpeg,\nDanhans42, NicholasNoble and ChatGPT");
+				"PicosStation Plus Menu Alpha Release");
 
-			printString(
-				chain, &font, 40, 120,
-				"https://github.com/team-Resurgent/picostation-menu");
+			// printString(
+			// 	chain, &font, 40, 120,
+			// 	"https://github.com/team-Resurgent/picostation-menu");
+
+			printScroll(chain, &font, 0, 120,
+				"Well here it is the PicosStation/Plus Credits.... Huge thanks go to Rama, Skitchin, SpicyJpeg, Danhans42, NicholasNoble and ChatGPT... Shout outs go out to every one on the PSX Dev & Xbox-Scene Discord... Until next time EqUiNoX and Raijun......................................................................................................"
+			);
+
+			checkMusic();
 		}
 
 		//	char printBuffer[1024];
@@ -612,8 +749,6 @@ int main(int argc, const char **argv)
 		//	printf("LBA: %i \n", modelLba);
 
 		//	printString(chain, &font, 56,100, printBuffer);
-
-		checkMusic();
 
 		previousButtons = buttons;
 		*(chain->nextPacket) = gp0_endTag(0);
