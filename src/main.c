@@ -835,9 +835,10 @@ int main(int argc, const char **argv)
 						sendCommand(COMMAND_IO_DATA, pair);
 					}
 				}
-
+				
+				issueCDROMCommand(CDROM_CMD_RESET ,NULL,0);
 				delayMicroseconds(40000);
-
+				
 				if (currentCommand == MENU_COMMAND_MOUNT_FILE_FAST) {
 					softFastReboot();
 				} else {

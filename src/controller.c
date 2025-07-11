@@ -103,6 +103,8 @@ bool waitForAcknowledge(int timeout) {
  uint8_t exchangeByte(uint8_t value) {
      // Wait until the interface is ready to accept a byte to send, then wait for
      // it to finish receiving the byte sent by the device.
+     IRQ_STAT     = ~(1 << IRQ_SIO0);
+     SIO_CTRL(0) |= SIO_CTRL_ACKNOWLEDGE;
      while (!(SIO_STAT(0) & SIO_STAT_TX_NOT_FULL))
          __asm__ volatile("");
  
