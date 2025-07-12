@@ -103,6 +103,8 @@ unsigned MOD_LoadEx(const struct MODFileFormat* module, const uint8_t* sampleDat
 // requires calling MOD_Load with a new file.
 void MOD_Poll();
 
+uint8_t MOD_Peak(unsigned channel);
+
 // New APIs from the original code from there on.
 
 // Defaults to 0. This is a boolean indicating if we

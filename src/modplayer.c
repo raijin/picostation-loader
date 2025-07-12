@@ -28,6 +28,7 @@ SOFTWARE.
 
 #include <stddef.h>
 #include <stdint.h>
+#include <stdio.h>
 
 #include "dma.h"
 #include "spu.h"
@@ -215,6 +216,7 @@ static void MOD_SetBPM(unsigned bpm) {
 }
 
 static struct SPUChannelData s_channelData[24];
+static uint8_t s_channelPeak[24];
 
 static uint32_t loadInternal(const struct MODFileFormat* module, const uint8_t* sampleData) {
     SPUInit();
@@ -263,6 +265,7 @@ static uint32_t loadInternal(const struct MODFileFormat* module, const uint8_t* 
     // least for being able to play more than one music
     MOD_PatternDelay = 0;
     __builtin_memset(s_channelData, 0, sizeof(s_channelData));
+    __builtin_memset(s_channelPeak, 0, sizeof(s_channelPeak));
 
     SPUUnMute();
 
@@ -649,6 +652,7 @@ static void MOD_UpdateRow() {
                 SETVOICEVOLUME(channel, volume);
             }
             SPUSetStartAddress(channel, s_spuInstrumentData[sampleID].baseAddress << 4 + channelData->samplePos);
+            s_channelPeak[channel] = 255;
         }
 
         if (period != 0) {
@@ -833,6 +837,19 @@ void MOD_Poll() {
         }
     }
     MOD_PatternDelay = newPatternDelay;
+
+    for (int i = 0; i < 24; i++)
+    {
+        if (s_channelPeak[i] > 0)
+        {
+            s_channelPeak[i] = s_channelPeak[i] - 4;
+        }
+    }
+}
+
+uint8_t MOD_Peak(unsigned channel)
+{
+    return s_channelPeak[channel];
 }
 
 void MOD_PlayNote(unsigned channel, unsigned sampleID, unsigned note, int16_t volume) {

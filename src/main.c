@@ -311,6 +311,9 @@ static void printString(DMAChain *chain, const TextureInfo *font, int x, int y, 
 	}
 }
 
+static int delay_logo = 0;
+static int sine_offset_logo = 0;
+
 static int delay = 0;
 static int string_offset = 0;
 static int sine_offset = 0;
@@ -320,6 +323,57 @@ static inline uint32_t gp0_vertex_uv(int x, int y, int u, int v, uint16_t clut)
 {
     return ((v & 0xFF) << 24) | ((u & 0xFF) << 16) | ((y & 0xFFFF) << 8) | (x & 0xFF);
     // Note: clut is usually passed separately, or stored in first command
+}
+
+static void drawScaled(DMAChain *chain, const TextureInfo *font, const SpriteInfo *sprite, int x, int y, int w, int h, bool blend) 
+{
+	int width = sprite->width;
+	int height = sprite->height;
+	int u = sprite->x;
+	int v = sprite->y;
+	
+	int x2 = x + w;
+	int u2 = u + width;
+	int y2 = y + h;
+	int v2 = v + height;
+
+
+	uint32_t *ptr;
+
+	ptr = allocatePacket(chain, 1);
+	ptr[0] = gp0_texpage(font->page, false, false);
+
+	ptr = allocatePacket(chain, 9);
+	ptr[0] = gp0_quad(true, blend);
+	ptr[1] = gp0_xy(x,  y);
+	ptr[2] = gp0_uv(u,  v, font->clut);
+	ptr[3] = gp0_xy(x2, y);
+	ptr[4] = gp0_uv(u2, v, font->page);
+	ptr[5] = gp0_xy(x,  y2);
+	ptr[6] = gp0_uv(u,  v2, 0);
+	ptr[7] = gp0_xy(x2, y2);
+	ptr[8] = gp0_uv(u2, v2, 0);
+
+
+			// ptr[0] = gp0_rectangle(true, true, true);
+		// ptr[1] = gp0_xy(currentX - x_ofs, currentY);
+		// ptr[2] = gp0_uv(font->u + sprite->x, font->v + sprite->y, font->clut);
+		// ptr[3] = gp0_xy(sprite->width, sprite->height);
+}
+
+void drawGradientRectD(DMAChain *chain, int x, int y, int width, int height, uint32_t top, uint32_t middle, uint32_t bottom, bool blend) 
+{
+	uint32_t *ptr;
+
+	ptr = allocatePacket(chain, 8);
+	ptr[0] = top | gp0_shadedQuad(true, false, blend);
+	ptr[1] = gp0_xy(x, y);
+	ptr[2] = middle;
+	ptr[3] = gp0_xy(x + width, y);
+	ptr[4] = middle;
+	ptr[5] = gp0_xy(x, y + height);
+	ptr[6] = bottom;
+	ptr[7] = gp0_xy(x + width, y + height);
 }
 
 static void printScroll(DMAChain *chain, const TextureInfo *font, int x, int y, const char *str)
@@ -405,6 +459,11 @@ static void printScroll(DMAChain *chain, const TextureInfo *font, int x, int y, 
 		ptr[1] = gp0_xy(currentX - x_ofs, currentY);
 		ptr[2] = gp0_uv(font->u + sprite->x, font->v + sprite->y, font->clut);
 		ptr[3] = gp0_xy(sprite->width, sprite->height);
+
+		// int width = sprite->width;
+		// int height = sprite->height;
+
+		// drawScaled(chain, font, sprite, currentX, currentY, sprite->width, sprite->height, true);
 
 		// Move onto the next character.
 		currentX += sprite->width;
@@ -593,16 +652,46 @@ int main(int argc, const char **argv)
 		ptr[1] = gp0_xy(bufferX, bufferY);
 		ptr[2] = gp0_xy(SCREEN_WIDTH, SCREEN_HEIGHT);
 
+
+		for (int i = 0; i < 4; i++)
+		{
+			uint8_t peak = (MOD_Peak(i) * 240) / 255;
+			drawGradientRectD(chain, 10 + (i * 80), 240 - peak, 60, peak,  gp0_rgb(255, 0, 0), gp0_rgb(255, 255, 0), gp0_rgb(0, 255, 0), true);
+		}
+
 		//draw logo
 		//if (firstboot == 0 && loadingmenu == 0){
+		if (creditsmenu == 0)
+		{
 			ptr    = allocatePacket(chain, 5);
 			ptr[0] = gp0_texpage(logo.page, false, false);
 			ptr[1] = gp0_rectangle(true, true, true);
 			ptr[2] = gp0_xy(96, 10);
 			ptr[3] = gp0_uv(logo.u, logo.v, logo.clut);
 			ptr[4] = gp0_xy(logo.width, logo.height);
-		//}
+		}
+		else 
+		{
 
+
+			delay_logo += 1;
+			if (delay_logo == 2)
+			{
+				sine_offset_logo = (sine_offset_logo + 1) % 64;
+				//string_offset+=1;
+				delay_logo = 0;
+			}
+
+			int logowidth = (logo.width * Scroll_SineTable[sine_offset_logo]) / 127;
+
+
+			SpriteInfo temp;
+			temp.x = logo.u;
+			temp.y = logo.v;
+			temp.width = logo.width;
+			temp.height = logo.height;
+			drawScaled(chain, &logo, &temp, (320 - logowidth) / 2, 10, logowidth, logo.height, true);
+		}
 
 		char controllerbuffer[256];
 		// get the controller button press
